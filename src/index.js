@@ -1,8 +1,7 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './style.css';
-import stationsData from './data/stations.csv';
-import barsData from './data/bars.json';
+import { parseCSV } from './utils/csvParser';
 
 let map;
 let currentLayer = 'stations';
@@ -27,6 +26,23 @@ function createColoredIcon(color) {
         iconAnchor: [13, 13],
         popupAnchor: [0, -13]
     });
+}
+
+//тащю данные с гита
+async function loadAllData() {
+    try {
+        const stationsResponse = await fetch('https://raw.githubusercontent.com/nextgis/metro4all/refs/heads/master/data/msk/stations.csv');
+        const stationsCSV = await stationsResponse.text();
+        window.stationsData = parseCSV(stationsCSV);
+
+        const barsResponse = await fetch('https://raw.githubusercontent.com/benbalter/dc-wifi-social/refs/heads/master/bars.geojson');
+        window.barsData = await barsResponse.json();
+
+    } catch (error) {
+        window.stationsData = [];
+        window.barsData = { features: [] };
+    }
+    initMap();
 }
 
 function initMap() {
@@ -71,9 +87,9 @@ function saveMapPosition() {
 //данные
 function loadData(){
     if (currentLayer === 'stations'){
-        filteredData = stationsData;
+        filteredData = window.stationsData || [];
     } else{
-        filteredData = barsData.features;
+        filteredData = window.barsData?.features || [];
     }
     updateMap();
     updateTable();
@@ -191,12 +207,12 @@ let searchText = document.getElementById('searchInput').value.toLowerCase();
         loadData();
     } else {
         if (currentLayer === 'stations'){
-            filteredData = stationsData.filter(function(station){
+            filteredData = window.stationsData.filter(function(station){
                 return station.name_ru.toLowerCase().includes(searchText) ||
                        station.name_en.toLowerCase().includes(searchText);
             });
         } else{
-            filteredData = barsData.features.filter(function(bar){
+            filteredData = window.barsData.features.filter(function(bar){
                 return bar.properties.name.toLowerCase().includes(searchText);
             });
         }
@@ -229,23 +245,24 @@ function stopPresentation(){
     document.getElementById('stopBtn').style.display = 'none';
 }
 
-
-initMap();
-
-document.getElementById('stationsBtn').onclick = function(){
-    currentLayer = 'stations';
-    loadData();
-    document.getElementById('searchInput').value = '';
-    saveState();
-};
-
-document.getElementById('barsBtn').onclick = function(){
-    currentLayer = 'bars';
-    loadData();
-    document.getElementById('searchInput').value = '';
-    saveState();
-};
-
-document.getElementById('searchInput').oninput = filterData;
-document.getElementById('presentBtn').onclick = startPresentation;
-document.getElementById('stopBtn').onclick = stopPresentation;
+document.addEventListener('DOMContentLoaded', async function() {
+    await loadAllData();
+    
+    document.getElementById('stationsBtn').onclick = function(){
+        currentLayer = 'stations';
+        loadData();
+        document.getElementById('searchInput').value = '';
+        saveState();
+    };
+    
+    document.getElementById('barsBtn').onclick = function(){
+        currentLayer = 'bars';
+        loadData();
+        document.getElementById('searchInput').value = '';
+        saveState();
+    };
+    
+    document.getElementById('searchInput').oninput = filterData;
+    document.getElementById('presentBtn').onclick = startPresentation;
+    document.getElementById('stopBtn').onclick = stopPresentation;
+});

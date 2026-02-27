@@ -28,16 +28,6 @@ module.exports = {
             {
                 test: /\.css$/,
                 use: [MiniCssExtractPlugin.loader, 'css-loader']
-            },
-            //в общем загрузчик для ссвихи чобы webpack сам все делал за меня
-            {
-                test: /\.csv$/,
-                loader: 'csv-loader',
-                options: {
-                    dynamicTyping: true, //числа
-                    header: true,        // первая строказаголовка
-                    skipEmptyLines: true   // пропускаю ппустоту
-                }
             }
         ]
     }
