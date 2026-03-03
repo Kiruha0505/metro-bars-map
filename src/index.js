@@ -3,12 +3,60 @@ import 'leaflet/dist/leaflet.css';
 import './style.css';
 import { parseCSV } from './utils/csvParser';
 
+//кэш
+const dataCache = {
+    stations: null,
+    bars: null,
+    loading: {
+        stations: false,
+        bars: false
+    }
+};
+
 let map;
 let currentLayer = 'stations';
 let markers = [];
 let filteredData = [];
 let presentationTimer = null;
 let presentationIndex = 0;
+
+//загружаю с кешем
+async function loadDataIfNeeded(layer) {
+    // если юыло то просто возвращаю
+    if (dataCache[layer] !== null) {
+        return dataCache[layer];
+    }
+
+    try {
+        let data;
+        if (layer === 'stations') {
+            const response = await fetch('https://raw.githubusercontent.com/nextgis/metro4all/refs/heads/master/data/msk/stations.csv');
+            const csv = await response.text();
+            data = parseCSV(csv);
+        } else{
+            const response = await fetch('https://raw.githubusercontent.com/benbalter/dc-wifi-social/refs/heads/master/bars.geojson');
+            data = await response.json();
+        }
+        dataCache[layer] = data;
+        return data;
+        
+    } catch (error) {
+        dataCache[layer] = layer === 'stations' ? [] : { features: [] };
+        return dataCache[layer];
+    }
+}
+
+async function loadData() {    
+    if (currentLayer === 'stations') {
+        filteredData = await loadDataIfNeeded('stations');
+    } else {
+        const bars = await loadDataIfNeeded('bars');
+        filteredData = bars.features || [];
+    }
+    
+    updateMap();
+    updateTable();
+}
 
 //новые маркеты тк после импорта карты полетели стандартные
 function createColoredIcon(color) {
@@ -26,23 +74,6 @@ function createColoredIcon(color) {
         iconAnchor: [13, 13],
         popupAnchor: [0, -13]
     });
-}
-
-//тащю данные с гита
-async function loadAllData() {
-    try {
-        const stationsResponse = await fetch('https://raw.githubusercontent.com/nextgis/metro4all/refs/heads/master/data/msk/stations.csv');
-        const stationsCSV = await stationsResponse.text();
-        window.stationsData = parseCSV(stationsCSV);
-
-        const barsResponse = await fetch('https://raw.githubusercontent.com/benbalter/dc-wifi-social/refs/heads/master/bars.geojson');
-        window.barsData = await barsResponse.json();
-
-    } catch (error) {
-        window.stationsData = [];
-        window.barsData = { features: [] };
-    }
-    initMap();
 }
 
 function initMap() {
@@ -84,17 +115,6 @@ function loadSavedState() {
 function saveMapPosition() {
     saveState();
 }
-//данные
-function loadData(){
-    if (currentLayer === 'stations'){
-        filteredData = window.stationsData || [];
-    } else{
-        filteredData = window.barsData?.features || [];
-    }
-    updateMap();
-    updateTable();
-}
-
 function updateMap(){
     for (let i = 0; i < markers.length; i++) {
         map.removeLayer(markers[i]);
@@ -201,26 +221,29 @@ function zoomToItem(index){
     saveState();
 }
 //филтр
-function filterData(){
-let searchText = document.getElementById('searchInput').value.toLowerCase();  
+function filterData() {
+    let searchText = document.getElementById('searchInput').value.toLowerCase();  
+    
     if (searchText === '') {
         loadData();
     } else {
         if (currentLayer === 'stations'){
-            filteredData = window.stationsData.filter(function(station){
-                return station.name_ru.toLowerCase().includes(searchText) ||
-                       station.name_en.toLowerCase().includes(searchText);
-            });
-        } else{
-            filteredData = window.barsData.features.filter(function(bar){
-                return bar.properties.name.toLowerCase().includes(searchText);
-            });
+            const stations = dataCache.stations || [];
+            filteredData = stations.filter(station => 
+                station.name_ru.toLowerCase().includes(searchText) ||
+                station.name_en.toLowerCase().includes(searchText)
+            );
+        } else {
+            const bars = dataCache.bars || { features: [] };
+            filteredData = bars.features.filter(bar =>
+                bar.properties.name.toLowerCase().includes(searchText)
+            );
         }
         updateMap();
         updateTable();
     }
     saveState();
-} 
+}
 
 function startPresentation(){    
     document.getElementById('presentBtn').style.display = 'none';
@@ -245,23 +268,23 @@ function stopPresentation(){
     document.getElementById('stopBtn').style.display = 'none';
 }
 
-document.addEventListener('DOMContentLoaded', async function() {
-    await loadAllData();
+document.addEventListener('DOMContentLoaded', async () => {
+    initMap();
     
-    document.getElementById('stationsBtn').onclick = function(){
+    document.getElementById('stationsBtn').onclick = async () => {
         currentLayer = 'stations';
-        loadData();
+        await loadData();
         document.getElementById('searchInput').value = '';
         saveState();
     };
     
-    document.getElementById('barsBtn').onclick = function(){
+    document.getElementById('barsBtn').onclick = async () => {
         currentLayer = 'bars';
-        loadData();
+        await loadData();
         document.getElementById('searchInput').value = '';
         saveState();
     };
-    
+
     document.getElementById('searchInput').oninput = filterData;
     document.getElementById('presentBtn').onclick = startPresentation;
     document.getElementById('stopBtn').onclick = stopPresentation;
